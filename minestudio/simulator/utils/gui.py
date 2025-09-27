@@ -337,7 +337,8 @@ class MinecraftGUI:
             multiline=True,
             wrap_lines=True,
         )
-        layout.update(x=self.window.width//2, y=self.window.height//2)
+        layout.x = self.window.width // 2
+        layout.y = self.window.height // 2
         layout.anchor_x = 'center'
         layout.anchor_y = 'center'
         layout.content_valign = 'center'
