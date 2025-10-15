@@ -10,6 +10,7 @@ from pathlib import Path
 from minestudio.simulator.callbacks.callback import MinecraftCallback
 from typing import Literal
 from rich import print
+import time
 
 class RecordCallback(MinecraftCallback):
     def __init__(self, record_path: str, fps: int = 20, frame_type: Literal['pov', 'obs'] = 'pov', recording: bool = True, **kwargs):
@@ -58,7 +59,9 @@ class RecordCallback(MinecraftCallback):
     def _save_episode(self):
         if len(self.frames) == 0:
             return 
-        output_path = self.record_path / f'episode_{self.episode_id}.mp4'
+        # Generate unique filename using episode_id and timestamp to prevent overwrites
+        timestamp = int(time.time() * 1000)  # millisecond precision
+        output_path = self.record_path / f'episode_{self.episode_id}_{timestamp}.mp4'
         with av.open(output_path, mode="w", format='mp4') as container:
             stream = container.add_stream("h264", rate=self.fps)
             stream.width = self.frames[0].shape[1]
@@ -71,4 +74,5 @@ class RecordCallback(MinecraftCallback):
                 container.mux(packet)
         print(f'[green]Episode {self.episode_id} saved at {output_path}[/green]')
         self.frames = []
+        # Increment episode_id after saving to ensure next episode gets a unique ID
         self.episode_id += 1

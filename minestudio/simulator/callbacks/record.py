@@ -15,6 +15,7 @@ from gymnasium import spaces
 from collections import defaultdict
 import json
 import cv2
+import time
 
 class RecordCallback(MinecraftCallback):
     """
@@ -169,8 +170,9 @@ class RecordCallback(MinecraftCallback):
         """
         if len(self.frames) == 0:
             return 
-        # Use current episode_id for filename, then increment for next episode
-        output_path = self.record_path / f'episode_{self.episode_id}.mp4'
+        # Generate unique filename using episode_id and timestamp to prevent overwrites
+        timestamp = int(time.time() * 1000)  # millisecond precision
+        output_path = self.record_path / f'episode_{self.episode_id}_{timestamp}.mp4'
         with av.open(output_path, mode="w", format='mp4') as container:
             stream = container.add_stream("h264", rate=self.fps)
             stream.width = self.frames[0].shape[1]
@@ -195,21 +197,21 @@ class RecordCallback(MinecraftCallback):
             for packet in stream.encode():
                 container.mux(packet)
         if self.record_origin_observation:
-            output_origin_path = self.record_path / f'episode_{self.episode_id}.npy'
+            output_origin_path = self.record_path / f'episode_{self.episode_id}_{timestamp}.npy'
             all_frames = np.array(self.frames)
             np.save(output_origin_path, all_frames)
         print(f'[green]Episode {self.episode_id} saved at {output_path}[/green]')
         self.frames = []
         
         if self.record_actions: # assert self.actions>0 sense self.frame > 0
-            output_action_path = self.record_path / f'episode_{self.episode_id}_action.json'
+            output_action_path = self.record_path / f'episode_{self.episode_id}_{timestamp}_action.json'
             record_actions = [self._process_action(action) for action in self.actions]
             with open(output_action_path, 'w', encoding="utf-8") as file:
                 json.dump(record_actions, file)
             self.actions = []
         
         if self.record_infos: # assert self.actions>0 sense self.frame > 0
-            output_info_path = self.record_path / f'episode_{self.episode_id}_info.json'
+            output_info_path = self.record_path / f'episode_{self.episode_id}_{timestamp}_info.json'
             record_infos = [self._process_info(info) for info in self.infos]
             with open(output_info_path, 'w', encoding="utf-8") as file:
                 json.dump(record_infos, file)
