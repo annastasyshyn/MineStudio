@@ -32,7 +32,6 @@ class RecordCallback(MinecraftCallback):
     def before_reset(self, sim, reset_flag: bool) -> bool:
         if self.recording:
             self._save_episode()
-            self.episode_id += 1
         return reset_flag
 
     def after_reset(self, sim, obs, info):
@@ -72,3 +71,4 @@ class RecordCallback(MinecraftCallback):
                 container.mux(packet)
         print(f'[green]Episode {self.episode_id} saved at {output_path}[/green]')
         self.frames = []
+        self.episode_id += 1

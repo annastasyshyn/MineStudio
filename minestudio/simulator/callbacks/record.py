@@ -76,7 +76,6 @@ class RecordCallback(MinecraftCallback):
         """
         if self.recording:
             self._save_episode()
-            self.episode_id += 1
         return reset_flag
 
     def after_reset(self, sim, obs, info):
@@ -137,7 +136,6 @@ class RecordCallback(MinecraftCallback):
             self.recording = False
             print(f'[red]Recording stopped[/red]')
             self._save_episode()
-            self.episode_id += 1
 
         if not self.recording and info.get('R', False):
             self.recording = True
@@ -171,6 +169,7 @@ class RecordCallback(MinecraftCallback):
         """
         if len(self.frames) == 0:
             return 
+        # Use current episode_id for filename, then increment for next episode
         output_path = self.record_path / f'episode_{self.episode_id}.mp4'
         with av.open(output_path, mode="w", format='mp4') as container:
             stream = container.add_stream("h264", rate=self.fps)
@@ -215,6 +214,9 @@ class RecordCallback(MinecraftCallback):
             with open(output_info_path, 'w', encoding="utf-8") as file:
                 json.dump(record_infos, file)
             self.infos = []
+        
+        # Increment episode_id after saving to ensure next episode gets a unique ID
+        self.episode_id += 1
             
         
     def _process_info(self,info:dict):
