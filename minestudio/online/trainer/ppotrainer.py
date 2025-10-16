@@ -233,18 +233,35 @@ class PPOTrainer(BaseTrainer):
             self.num_updates = 0
         self.kl_divergence_coef_rho = self.kl_divergence_coef_rho * (self.coef_rho_decay ** self.num_updates)
 
-        for i in range(self.num_updates, self.num_iterations):
-            print(f"[num_iters]: {i}")
+        # Use tqdm_ray for displaying progress bar on rank 0 worker only
+        iteration_range = range(self.num_updates, self.num_iterations)
+        if self.rank == 0:
+            iterations = tqdm_ray.tqdm(iteration_range, desc="Training Iterations", total=self.num_iterations)
+        else:
+            iterations = iteration_range
+
+        for i in iterations:
+            if self.rank == 0:
+                iterations.set_description(f"Iteration {i}/{self.num_iterations-1}")
+            
             if self.anneal_lr_linearly:
                 frac = 1.0 - i / self.num_iterations
                 lrnow = frac * self.learning_rate
                 self.optimizer.param_groups[0]["lr"] = lrnow
+            
             self.train_iteration()
+            
             if self.rank == 0:
                 start_time = time.time()
                 if self.num_updates > self.vf_warmup:
                     self.broadcast_model_to_rollout_workers(new_version=True)
                 end_time = time.time()
+                # Update progress bar with additional info
+                iterations.set_postfix(
+                    lr=f"{self.optimizer.param_groups[0]['lr']:.6f}", 
+                    buffer_reward=f"{self.buffer_reward:.3f}",
+                    update_time=f"{end_time - start_time:.2f}s"
+                )
                 logging.getLogger("ray").info(f"Updated model in {end_time - start_time} seconds.")
 
     def train_iteration(self):
@@ -350,7 +367,15 @@ class PPOTrainer(BaseTrainer):
         advantage_std = (_advantage_sum2 / _advantage_count - advantage_mean ** 2) ** 0.5
 
         torch.cuda.empty_cache()
-        for epoch in range(self.epochs_per_iteration):
+        
+        # Create epoch progress tracking with tqdm
+        if self.rank == 0:
+            epoch_iterator = tqdm_ray.tqdm(range(self.epochs_per_iteration), 
+                                         desc=f"PPO Epochs (Update {self.num_updates})")
+        else:
+            epoch_iterator = range(self.epochs_per_iteration)
+            
+        for epoch in epoch_iterator:
 
             it = data_iter(
                 loader_pool=self.loader_pool,
@@ -558,6 +583,14 @@ class PPOTrainer(BaseTrainer):
 
                             mean_abs_td_target.update(td_target.abs().mean().detach(), weight=loss_weight)
                             mean_abs_advantage.update(advantage.abs().mean().detach(), weight=loss_weight)
+                            
+                            # Update tqdm progress bar with current metrics
+                            if self.rank == 0 and hasattr(it, 'set_postfix'):
+                                it.set_postfix(
+                                    policy_loss=f"{mean_policy_loss.compute().item():.4f}",
+                                    value_loss=f"{mean_value_loss.compute().item():.4f}",
+                                    kl=f"{mean_approx_kl.compute().item():.4f}"
+                                )
 
                 if batch_count % self.gradient_accumulation == 0:
                     if self.use_amp:
@@ -569,6 +602,15 @@ class PPOTrainer(BaseTrainer):
                         torch.nn.utils.clip_grad.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
                         self.optimizer.step()
                     self.optimizer.zero_grad()
+            
+            # Update epoch progress bar at the end of each epoch
+            if self.rank == 0 and hasattr(epoch_iterator, 'set_postfix'):
+                epoch_iterator.set_postfix(
+                    policy_loss=f"{mean_policy_loss.compute().item():.4f}",
+                    value_loss=f"{mean_value_loss.compute().item():.4f}",
+                    kl=f"{mean_approx_kl.compute().item():.4f}",
+                    entropy=f"{mean_entropy_bonus.compute().item():.4f}"
+                )
 
         mean_kl_divergence_loss_item = mean_kl_divergence_loss.compute().item()
         info = {
