@@ -199,6 +199,10 @@ class EnvWorker(Process):
                 pass
         
         self.video_fps = video_fps
+        # Session counter for the worker
+        self.session_counter = 0
+        # Episode counter resets with each session
+        self.episode_counter = 0
     
     def step_agent(self, obs: dict, last_reward: float, last_terminated: bool, last_truncated: bool, episode_uuid: str) -> Tuple[Dict[str, torch.Tensor], float]:
         """
@@ -244,12 +248,14 @@ class EnvWorker(Process):
         video_writer.start()
         record = False
         self.env = self.env_generator()
-        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
         episode_info = None
         while True:
             time.sleep(random.randint(0,20))
             self.env.close()
             self.env = self.env_generator()
+            # Increment session counter and reset episode counter for each new session
+            self.session_counter += 1
+            self.episode_counter = 0
             try:
                 start_time = time.time()
                 reward = 0.0
@@ -266,7 +272,7 @@ class EnvWorker(Process):
                     episode_uuid = str(uuid.uuid4())
                     while True:
                         if step%100==1:
-                            logging.getLogger("ray").info(f"working..., max_fast_reset: {self.max_fast_reset}, env_id: {self.env_id}, rollout_worker_id: {self.rollout_worker_id}, step: {step}")
+                            logging.getLogger("ray").info(f"working..., max_fast_reset: {self.max_fast_reset}, env_id: {self.env_id}, rollout_worker_id: {self.rollout_worker_id}, session: {self.session_counter}, episode: {self.episode_counter}, step: {step}")
                         step += 1
                         action, vpred = self.step_agent(obs, 
                                             last_reward=float(reward),
@@ -301,14 +307,16 @@ class EnvWorker(Process):
                     if _result is not None:
                         record = True
                         video_step = _result
-                        vidoe_uuid = str(uuid.uuid4())
                         
-                        save_video_name = f"{timestamp}/"+f"{video_step} - {vidoe_uuid}.mp4".replace('/', '_').replace('\\', '_')
+                        # Use session_counter and episode_counter for better naming
+                        save_video_name = f"session_{self.session_counter}_episode_{self.episode_counter}.mp4"
                         video_path = self.video_output_dir / save_video_name
                         os.makedirs(video_path.parent, exist_ok=True)
                         if video_writer.openess == 1:
                             video_writer.close_video()
                         video_writer.open_video(video_path)
+                        # Increment episode counter for next episode
+                        self.episode_counter += 1
 
             except Exception as e:
                 traceback.print_exc()

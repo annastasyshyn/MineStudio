@@ -257,12 +257,12 @@ class PPOTrainer(BaseTrainer):
                     self.broadcast_model_to_rollout_workers(new_version=True)
                 end_time = time.time()
                 # Update progress bar with additional info
-                iterations.set_postfix(
-                    lr=f"{self.optimizer.param_groups[0]['lr']:.6f}", 
-                    buffer_reward=f"{self.buffer_reward:.3f}",
-                    update_time=f"{end_time - start_time:.2f}s"
+                # Note: tqdm_ray doesn't support set_postfix, so we log instead
+                logging.getLogger("ray").info(
+                    f"Updated model in {end_time - start_time:.2f}s | "
+                    f"lr={self.optimizer.param_groups[0]['lr']:.6f} | "
+                    f"buffer_reward={self.buffer_reward:.3f}"
                 )
-                logging.getLogger("ray").info(f"Updated model in {end_time - start_time} seconds.")
 
     def train_iteration(self):
         """
